@@ -582,7 +582,7 @@ if not icon_source.is_file():
 
 manifest = app / "src/main/AndroidManifest.xml"
 manifest_text = manifest.read_text(encoding="utf-8")
-application_match = re.search(r"<application\\b[^>]*>", manifest_text, flags=re.DOTALL)
+application_match = re.search(r"<application[^>]*>", manifest_text, flags=re.DOTALL)
 if application_match is None:
     raise SystemExit("Could not locate the Android application tag")
 
