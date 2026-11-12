@@ -56,7 +56,7 @@ object MoghimiNetworkIdentityLookup {
             readTimeout = 6_000
             instanceFollowRedirects = true
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0")
+            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.1")
             setRequestProperty("Cache-Control", "no-cache")
         }
         try {
