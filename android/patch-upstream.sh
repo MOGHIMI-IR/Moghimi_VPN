@@ -147,6 +147,7 @@ activity = activity.replace(
     "import androidx.lifecycle.lifecycleScope\n",
     """import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.getValue
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
