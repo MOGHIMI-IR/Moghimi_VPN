@@ -9,6 +9,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,6 +56,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -287,20 +289,17 @@ private fun HeaderRow(
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
+            Image(
+                painter = androidx.compose.ui.res.painterResource(
+                    id = com.v2ray.ang.R.mipmap.moghimi_vpn
+                ),
+                contentDescription = "Moghimi VPN",
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .size(42.dp)
                     .shadow(12.dp, RoundedCornerShape(14.dp), ambientColor = Color(0xFFA98BFF))
                     .clip(RoundedCornerShape(14.dp))
-                    .background(
-                        Brush.linearGradient(
-                            listOf(Color(0xFFFFD84D), Color(0xFFB68CFF))
-                        )
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("MG", color = Color(0xFF10172B), fontSize = 16.sp, fontWeight = FontWeight.Black)
-            }
+            )
             Column(Modifier.padding(start = 11.dp)) {
                 Text(
                     "MOGHIMI",
