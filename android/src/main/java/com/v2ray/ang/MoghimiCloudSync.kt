@@ -40,6 +40,7 @@ object MoghimiCloudSync {
      * Fetch all active payloads before replacing the app-owned group. If a file download
      * fails, the previously working Moghimi group is left untouched.
      */
+    @Synchronized
     fun sync(): SyncResult {
         val entries = JSONArray(request(CONFIG_TABLE_URL, "GET"))
         if (entries.length() == 0) {
@@ -155,7 +156,7 @@ object MoghimiCloudSync {
             readTimeout = 8_000
             instanceFollowRedirects = true
             setRequestProperty("Accept", "*/*")
-            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.5")
+            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.16")
             if (includeApiKey) {
                 // Supabase sb_publishable keys are opaque API keys, not JWTs.
                 // Send them only in the apikey header; Authorization is reserved for user JWTs.
