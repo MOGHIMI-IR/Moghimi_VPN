@@ -34,7 +34,7 @@
 
 **[⬇️ دریافت Moghimi VPN برای اندروید](https://github.com/MOGHIMI-IR/Moghimi_VPN/releases)**
 
-سایت رسمی: https://moghimi-ir.github.io/MG_V2RAY/
+سایت رسمی: https://moghimi-ir.github.io/MG_V2RAY/\n\nراهنمای [حریم خصوصی](PRIVACY.md) و [چک‌لیست تست روی گوشی واقعی](DEVICE-TESTING.md).
 
 ## وضعیت پروژه
 
