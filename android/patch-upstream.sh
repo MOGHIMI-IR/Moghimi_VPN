@@ -396,7 +396,7 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                 var measured = serverFlow.value
                     .filter { it.testDelayMillis > 0L }
                     .sortedBy { it.testDelayMillis }
-                var hasRealPing = realTestFinished && measured.isNotEmpty()
+                var hasRealPing = measured.isNotEmpty()
 
                 if (measured.isEmpty()) {
                     smartUiState.update {
@@ -435,7 +435,7 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                         phase = "بهترین مسیر پیدا شد؛ در حال اتصال",
                         progress = 0.82f,
                         pingMillis = smartCandidatePings[smartCandidateGuids.first()]
-                            .takeIf { smartPingIsReal && it > 0L },
+                            ?.takeIf { smartPingIsReal && it > 0L },
                         serverCount = servers.size,
                         errorMessage = null
                     )
@@ -481,7 +481,7 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                                 phase = "اینترنت آماده است",
                                 progress = 1f,
                                 pingMillis = smartCandidatePings[guid]
-                                    .takeIf { smartPingIsReal && it > 0L },
+                                    ?.takeIf { smartPingIsReal && it > 0L },
                                 internetVerified = true,
                                 errorMessage = null
                             )
@@ -505,7 +505,7 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                             progress = (index.toFloat() / smartCandidateGuids.size.toFloat())
                                 .coerceIn(0.1f, 0.95f),
                             pingMillis = smartCandidatePings[nextGuid]
-                                .takeIf { smartPingIsReal && it > 0L },
+                                ?.takeIf { smartPingIsReal && it > 0L },
                             internetVerified = null
                         )
                     }
