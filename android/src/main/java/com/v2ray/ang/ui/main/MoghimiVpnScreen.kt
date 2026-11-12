@@ -142,11 +142,11 @@ fun MoghimiVpnScreen(
 
             Spacer(Modifier.height(14.dp))
             ConnectionOrb(
-                isConnected = isConnected,
+                isConnected = isTunnelActive,
                 isWorking = isBusy,
                 phase = smartState.phase,
                 onClick = {
-                    if (isConnected) onDisconnect() else if (!isBusy) onConnect()
+                    if (isTunnelActive) onDisconnect() else if (!isBusy) onConnect()
                 }
             )
 
@@ -713,7 +713,7 @@ private fun ConnectionModeCard(
                 Text(
                     text = when {
                         isTunnelActive && internetVerified == true -> "مسیر مناسب پیدا شده و اینترنت در دسترس است"
-                        isTunnelActive && internetVerified == false -> "در حال نیاز به بررسی مسیر اتصال"
+                        isTunnelActive && internetVerified == false -> "اتصال روشن است؛ بررسی اینترنت ادامه دارد"
                         isTunnelActive -> "در حال بررسی دسترسی اینترنت"
                         isBusy -> "در حال پیدا کردن بهترین مسیر"
                         else -> "بهترین مسیر به‌صورت خودکار انتخاب می‌شود"
