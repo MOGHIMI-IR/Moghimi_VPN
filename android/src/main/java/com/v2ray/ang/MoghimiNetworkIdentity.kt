@@ -22,29 +22,55 @@ object MoghimiNetworkIdentityLookup {
      * This check is independent of country/IP lookup and never controls tunnel startup.
      */
     fun verifyInternetThroughTunnel(): Boolean {
-        val endpoints = listOf(
-            "https://www.gstatic.com/generate_204",
-            "https://cp.cloudflare.com/generate_204",
-            "https://www.google.com/generate_204"
+        data class Probe(
+            val url: String,
+            val expectedStatus: Int,
+            val expectedBody: String? = null
         )
-        for (endpoint in endpoints) {
+
+        // Use independent providers. A generic HTTP 200/302 can be a captive-portal
+        // page, so each probe must match its expected status or response text.
+        val probes = listOf(
+            Probe("https://www.gstatic.com/generate_204", 204),
+            Probe("https://cp.cloudflare.com/generate_204", 204),
+            Probe(
+                "https://www.msftconnecttest.com/connecttest.txt",
+                200,
+                "Microsoft Connect Test"
+            ),
+            Probe(
+                "https://captive.apple.com/hotspot-detect.html",
+                200,
+                "Success"
+            )
+        )
+
+        for (probe in probes) {
             val connection = try {
-                (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                (URL(probe.url).openConnection() as HttpURLConnection).apply {
                     requestMethod = "GET"
-                    connectTimeout = 2_500
-                    readTimeout = 2_500
+                    connectTimeout = 2_200
+                    readTimeout = 2_200
                     instanceFollowRedirects = true
                     setRequestProperty("Cache-Control", "no-cache")
-                    setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.5")
+                    setRequestProperty("Accept", "*/*")
+                    setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.16")
                 }
             } catch (_: Exception) {
                 continue
             }
+
             try {
-                val status = connection.responseCode
-                if (status in 200..399) return true
+                if (connection.responseCode != probe.expectedStatus) continue
+                val expectedBody = probe.expectedBody
+                if (expectedBody == null) return true
+
+                val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use {
+                    it.readText().take(2_048)
+                }
+                if (body.contains(expectedBody, ignoreCase = true)) return true
             } catch (_: Exception) {
-                // Try the next independent reachability endpoint.
+                // Try another independent reachability endpoint.
             } finally {
                 connection.disconnect()
             }
@@ -91,7 +117,7 @@ object MoghimiNetworkIdentityLookup {
             readTimeout = 3_500
             instanceFollowRedirects = true
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.5")
+            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.16")
             setRequestProperty("Cache-Control", "no-cache")
         }
         try {
