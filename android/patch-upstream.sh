@@ -582,30 +582,37 @@ if not icon_source.is_file():
 
 manifest = app / "src/main/AndroidManifest.xml"
 manifest_text = manifest.read_text(encoding="utf-8")
-replace_once(
-    manifest,
-    'android:icon="@mipmap/ic_launcher"',
-    'android:icon="@mipmap/moghimi_vpn"',
-    "primary launcher icon"
-)
-manifest_text = manifest.read_text(encoding="utf-8")
-if 'android:roundIcon="@mipmap/ic_launcher_round"' in manifest_text:
-    replace_once(
-        manifest,
-        'android:roundIcon="@mipmap/ic_launcher_round"',
-        'android:roundIcon="@mipmap/moghimi_vpn"',
-        "round launcher icon"
-    )
-elif 'android:roundIcon=' in manifest_text:
-    raise SystemExit("Unexpected existing roundIcon value; review manifest before replacing it")
-else:
-    manifest_text = manifest.read_text(encoding="utf-8")
-    manifest_text = manifest_text.replace(
+application_match = re.search(r"<application\\b[^>]*>", manifest_text, flags=re.DOTALL)
+if application_match is None:
+    raise SystemExit("Could not locate the Android application tag")
+
+application_tag = application_match.group(0)
+if re.search(r'android:icon="[^"]+"', application_tag):
+    application_tag = re.sub(
+        r'android:icon="[^"]+"',
         'android:icon="@mipmap/moghimi_vpn"',
-        'android:icon="@mipmap/moghimi_vpn" android:roundIcon="@mipmap/moghimi_vpn"',
-        1
+        application_tag,
+        count=1
     )
-    manifest.write_text(manifest_text, encoding="utf-8")
+else:
+    application_tag = application_tag[:-1] + ' android:icon="@mipmap/moghimi_vpn">'
+
+if re.search(r'android:roundIcon="[^"]+"', application_tag):
+    application_tag = re.sub(
+        r'android:roundIcon="[^"]+"',
+        'android:roundIcon="@mipmap/moghimi_vpn"',
+        application_tag,
+        count=1
+    )
+else:
+    application_tag = application_tag[:-1] + ' android:roundIcon="@mipmap/moghimi_vpn">'
+
+manifest_text = (
+    manifest_text[:application_match.start()]
+    + application_tag
+    + manifest_text[application_match.end():]
+)
+manifest.write_text(manifest_text, encoding="utf-8")
 
 # Pre-adaptive-icon fallback and adaptive foreground use the same artwork.
 mipmap_nodpi = res / "mipmap-nodpi"
