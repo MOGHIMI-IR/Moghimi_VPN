@@ -43,8 +43,8 @@ gradle = app / "build.gradle.kts"
 source = gradle.read_text(encoding="utf-8")
 for old, new, label in [
     ('applicationId = "com.v2ray.ang"', 'applicationId = "ir.moghimi.vpn"', "applicationId"),
-    ("versionCode = 755", "versionCode = 6", "versionCode"),
-    ('versionName = "2.3.15"', 'versionName = "1.0.5"', "versionName"),
+    ("versionCode = 755", "versionCode = 17", "versionCode"),
+    ('versionName = "2.3.15"', 'versionName = "1.0.16"', "versionName"),
 ]:
     if source.count(old) != 1:
         raise SystemExit(f"Expected one Gradle match for {label}")
@@ -374,7 +374,10 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
             try {
                 // Finish any startup sync first; connection can still fall back to cached routes.
                 cloudSyncJob?.join()
-                val servers = refreshCloudGroup()
+                // Reuse the group loaded by the startup sync; only retry cloud access if no
+                // local route is available. This avoids downloading and importing twice.
+                val cachedServers = mainViewModel.serversForGroup(MoghimiCloudSync.CLOUD_GROUP_ID).value
+                val servers = if (cachedServers.isEmpty()) refreshCloudGroup() else cachedServers
                 smartUiState.update {
                     it.copy(
                         isWorking = true,
@@ -391,6 +394,10 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                     true
                 } == true
                 if (!realTestFinished) mainViewModel.cancelAllPing()
+
+                // The engine persists ping results before clearing isTesting, while its UI
+                // cache refresh runs asynchronously. Reload persisted results before ranking.
+                mainViewModel.setupGroupTab(forceRefresh = true).join()
 
                 val serverFlow = mainViewModel.serversForGroup(MoghimiCloudSync.CLOUD_GROUP_ID)
                 var measured = serverFlow.value
@@ -411,6 +418,7 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                         true
                     } == true
                     if (!tcpTestFinished) mainViewModel.cancelAllPing()
+                    mainViewModel.setupGroupTab(forceRefresh = true).join()
                     measured = serverFlow.value
                         .filter { it.testDelayMillis > 0L }
                         .sortedBy { it.testDelayMillis }
