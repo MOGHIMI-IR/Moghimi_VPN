@@ -522,8 +522,7 @@ activity_file.write_text(activity, encoding="utf-8")
 replace_once(
     activity_file,
     "        LauncherManager.startService(this)\n    }\n\n    private fun importManually",
-    """            LauncherManager.startService(this)
-        }
+    """        LauncherManager.startService(this)
         if (smartCandidateGuids.isNotEmpty()) {
             monitorSmartConnection(0)
         }
