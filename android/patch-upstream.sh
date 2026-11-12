@@ -171,6 +171,7 @@ import androidx.work.WorkManager
 import com.v2ray.ang.MoghimiCloudSync
 import com.v2ray.ang.MoghimiNetworkIdentityLookup
 import com.v2ray.ang.MoghimiSyncWorker
+import com.v2ray.ang.MoghimiUpdateChecker
 import com.v2ray.ang.dto.entities.ServersCache
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -193,12 +194,15 @@ activity = activity.replace(
     private val smartUiState = MutableStateFlow(MoghimiSmartUiState())
     private val cloudSyncMutex = Mutex()
     private var smartConnectJob: Job? = null
+    private var cloudSyncJob: Job? = null
     private var smartAttemptJob: Job? = null
     private var identityLookupJob: Job? = null
+    private var internetCheckJob: Job? = null
+    private var updateCheckJob: Job? = null
+    private var dismissedUpdateVersion: String? = null
     private var smartCandidateGuids: List<String> = emptyList()
     private var smartCandidatePings: Map<String, Long> = emptyMap()
     private var smartPingIsReal: Boolean = true
-    private var preferredServerGuid: String? = null
     private var wasVpnRunning = false
 """,
     1
@@ -227,6 +231,7 @@ new_on_create = """        mainViewModel.onAction(MainAction.Initialize)
         scheduleMoghimiBackgroundSync()
         observeVpnState()
         syncMoghimiCloud(silent = true)
+        checkForMoghimiUpdates()
 
         checkAndRequestPermission(PermissionType.POST_NOTIFICATIONS) {}"""
 if activity.count(old_on_create) != 1:
@@ -245,9 +250,23 @@ new_screen = """    @Composable
             onConnect = { startSmartConnection() },
             onDisconnect = { disconnectMoghimiVpn() },
             onRefresh = { syncMoghimiCloud(silent = false) },
-            onSelectServer = { guid ->
-                preferredServerGuid = guid
-                mainViewModel.updateSelectedGuid(guid)
+            onOpenUpdate = { url ->
+                runCatching {
+                    startActivity(
+                        android.content.Intent(
+                            android.content.Intent.ACTION_VIEW,
+                            android.net.Uri.parse(url)
+                        )
+                    )
+                }.onFailure {
+                    smartUiState.update {
+                        it.copy(errorMessage = "باز کردن لینک دریافت نسخهٔ جدید انجام نشد.")
+                    }
+                }
+            },
+            onDismissUpdate = {
+                dismissedUpdateVersion = smartUiState.value.updateInfo?.versionName
+                smartUiState.update { it.copy(updateInfo = null) }
             }
         )
     }
@@ -270,53 +289,68 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
     }
 
     private suspend fun refreshCloudGroup(): List<ServersCache> {
-        withContext(Dispatchers.IO) {
-            cloudSyncMutex.withLock {
-                MoghimiCloudSync.sync()
+        var syncFailure: Exception? = null
+        try {
+            withContext(Dispatchers.IO) {
+                cloudSyncMutex.withLock {
+                    MoghimiCloudSync.sync()
+                }
             }
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // Keep using the last known-good local routes if the cloud is temporarily unreachable.
+            syncFailure = error
         }
+
         mainViewModel.setupGroupTab(forceRefresh = true).join()
         if (mainViewModel.uiState.value.groups.none { it.id == MoghimiCloudSync.CLOUD_GROUP_ID }) {
-            throw IOException("در حال حاضر مسیری برای اتصال منتشر نشده است.")
+            throw syncFailure ?: IOException("هنوز مسیری برای اتصال دریافت نشده است.")
         }
+
         mainViewModel.subscriptionIdChanged(MoghimiCloudSync.CLOUD_GROUP_ID)
         val serverFlow = mainViewModel.serversForGroup(MoghimiCloudSync.CLOUD_GROUP_ID)
-        return withTimeout(20_000L) {
+        val loaded = withTimeoutOrNull(12_000L) {
             serverFlow.first { it.isNotEmpty() }
         }
+        val servers = loaded ?: serverFlow.value
+        if (servers.isEmpty()) {
+            throw syncFailure ?: IOException("هیچ مسیر قابل استفاده‌ای پیدا نشد.")
+        }
+        return servers
     }
 
     private fun syncMoghimiCloud(silent: Boolean) {
-        if (smartUiState.value.isWorking) return
-        smartConnectJob?.cancel()
-        smartConnectJob = lifecycleScope.launch {
-            smartUiState.update {
-                it.copy(
-                    isWorking = true,
-                    phase = "در حال دریافت مسیرها",
-                    progress = 0.18f,
-                    errorMessage = null
-                )
-            }
+        if (cloudSyncJob?.isActive == true) return
+        cloudSyncJob = lifecycleScope.launch {
             try {
                 val servers = refreshCloudGroup()
                 smartUiState.update {
-                    it.copy(
-                        isWorking = false,
-                        phase = "آماده‌ی اتصال",
-                        progress = 1f,
-                        serverCount = servers.size,
-                        errorMessage = null
-                    )
+                    it.copy(serverCount = servers.size, errorMessage = null)
                 }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
-                smartUiState.update {
-                    it.copy(
-                        isWorking = false,
-                        phase = "آماده‌ی اتصال",
-                        errorMessage = error.localizedMessage ?: "دریافت مسیرها ناموفق بود."
-                    )
+                if (!silent) {
+                    smartUiState.update {
+                        it.copy(
+                            errorMessage = error.localizedMessage
+                                ?: "دریافت مسیرها انجام نشد؛ اتصال ذخیره‌شده حفظ شده است."
+                        )
+                    }
                 }
+            }
+        }
+    }
+
+    private fun checkForMoghimiUpdates() {
+        if (updateCheckJob?.isActive == true) return
+        updateCheckJob = lifecycleScope.launch {
+            val update = withContext(Dispatchers.IO) {
+                MoghimiUpdateChecker.check()
+            }
+            if (update != null && update.versionName != dismissedUpdateVersion) {
+                smartUiState.update { it.copy(updateInfo = update) }
             }
         }
     }
@@ -327,65 +361,70 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
             smartUiState.update {
                 it.copy(
                     isWorking = true,
-                    phase = "در حال دریافت آخرین مسیرها",
+                    phase = "در حال آماده‌سازی اتصال",
                     progress = 0.08f,
                     errorMessage = null,
                     publicIp = null,
                     countryName = null,
                     countryCode = null,
-                    pingMillis = null
+                    pingMillis = null,
+                    internetVerified = null
                 )
             }
             try {
+                // Finish any startup sync first; connection can still fall back to cached routes.
+                cloudSyncJob?.join()
                 val servers = refreshCloudGroup()
                 smartUiState.update {
                     it.copy(
                         isWorking = true,
-                        phase = "در حال بررسی کیفیت اتصال",
-                        progress = 0.32f,
+                        phase = "در حال سنجش کیفیت مسیرها",
+                        progress = 0.30f,
                         serverCount = servers.size
                     )
                 }
 
                 mainViewModel.cancelAllPing()
                 mainViewModel.testAllRealPing()
-                withTimeout(180_000L) {
+                val realTestFinished = withTimeoutOrNull(25_000L) {
                     mainViewModel.uiState.first { !it.isTesting }
-                }
+                    true
+                } == true
+                if (!realTestFinished) mainViewModel.cancelAllPing()
 
                 val serverFlow = mainViewModel.serversForGroup(MoghimiCloudSync.CLOUD_GROUP_ID)
-                var ranked = serverFlow.value
+                var measured = serverFlow.value
                     .filter { it.testDelayMillis > 0L }
                     .sortedBy { it.testDelayMillis }
-                var hasRealPing = true
+                var hasRealPing = realTestFinished && measured.isNotEmpty()
 
-                if (ranked.isEmpty()) {
-                    hasRealPing = false
+                if (measured.isEmpty()) {
                     smartUiState.update {
                         it.copy(
                             phase = "در حال بررسی دسترسی مسیرها",
-                            progress = 0.58f
+                            progress = 0.55f
                         )
                     }
                     mainViewModel.testAllRealPing(onlyTcp = true)
-                    withTimeout(120_000L) {
+                    val tcpTestFinished = withTimeoutOrNull(12_000L) {
                         mainViewModel.uiState.first { !it.isTesting }
-                    }
-                    ranked = serverFlow.value
+                        true
+                    } == true
+                    if (!tcpTestFinished) mainViewModel.cancelAllPing()
+                    measured = serverFlow.value
                         .filter { it.testDelayMillis > 0L }
                         .sortedBy { it.testDelayMillis }
+                    hasRealPing = false
                 }
 
-                if (ranked.isEmpty()) {
-                    throw IOException("هیچ مسیر پاسخگویی پیدا نشد. کمی بعد دوباره امتحان کن.")
+                // Do not discard candidates just because a ping endpoint rejected the test.
+                val measuredIds = measured.mapTo(HashSet()) { it.guid }
+                val unmeasured = serverFlow.value.filter { it.guid !in measuredIds }
+                val ordered = measured + unmeasured
+                if (ordered.isEmpty()) {
+                    throw IOException("هیچ مسیر قابل استفاده‌ای پیدا نشد. بعداً دوباره امتحان کن.")
                 }
 
-                val preferred = preferredServerGuid
-                val ordered = if (preferred != null && ranked.any { it.guid == preferred }) {
-                    listOf(ranked.first { it.guid == preferred }) + ranked.filter { it.guid != preferred }
-                } else {
-                    ranked
-                }
                 smartCandidateGuids = ordered.map { it.guid }
                 smartCandidatePings = ordered.associate { it.guid to it.testDelayMillis }
                 smartPingIsReal = hasRealPing
@@ -395,17 +434,19 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                         isWorking = true,
                         phase = "بهترین مسیر پیدا شد؛ در حال اتصال",
                         progress = 0.82f,
-                        pingMillis = smartCandidatePings[smartCandidateGuids.first()].takeIf { smartPingIsReal },
+                        pingMillis = smartCandidatePings[smartCandidateGuids.first()]
+                            .takeIf { smartPingIsReal && it > 0L },
                         serverCount = servers.size,
                         errorMessage = null
                     )
                 }
-                delay(250)
+                delay(250L)
                 requestServiceStart()
             } catch (cancelled: kotlinx.coroutines.CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 smartCandidateGuids = emptyList()
+                mainViewModel.cancelAllPing()
                 smartUiState.update {
                     it.copy(
                         isWorking = false,
@@ -423,50 +464,65 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
         smartAttemptJob = lifecycleScope.launch {
             var index = startIndex
             while (index < smartCandidateGuids.size) {
-                val started = withTimeoutOrNull(20_000L) {
+                val started = withTimeoutOrNull(15_000L) {
                     mainViewModel.uiState.first { it.isRunning }
                 } != null
-                delay(1_200L)
+
                 if (started && mainViewModel.uiState.value.isRunning) {
-                    val guid = smartCandidateGuids[index]
-                    smartUiState.update {
-                        it.copy(
-                            isWorking = false,
-                            phase = "اتصال برقرار است",
-                            progress = 1f,
-                            pingMillis = smartCandidatePings[guid].takeIf { smartPingIsReal },
-                            errorMessage = null
-                        )
+                    delay(700L)
+                    val internetOk = withContext(Dispatchers.IO) {
+                        MoghimiNetworkIdentityLookup.verifyInternetThroughTunnel()
                     }
-                    smartCandidateGuids = emptyList()
-                    return@launch
+                    if (internetOk && mainViewModel.uiState.value.isRunning) {
+                        val guid = smartCandidateGuids[index]
+                        smartUiState.update {
+                            it.copy(
+                                isWorking = false,
+                                phase = "اینترنت آماده است",
+                                progress = 1f,
+                                pingMillis = smartCandidatePings[guid]
+                                    .takeIf { smartPingIsReal && it > 0L },
+                                internetVerified = true,
+                                errorMessage = null
+                            )
+                        }
+                        smartCandidateGuids = emptyList()
+                        return@launch
+                    }
                 }
 
                 LauncherManager.stopService(this@MainActivity)
+                withTimeoutOrNull(5_000L) {
+                    mainViewModel.uiState.first { !it.isRunning }
+                }
                 index += 1
                 if (index < smartCandidateGuids.size) {
                     val nextGuid = smartCandidateGuids[index]
                     smartUiState.update {
                         it.copy(
                             isWorking = true,
-                            phase = "در حال امتحان مسیر جایگزین",
+                            phase = "مسیر اول پاسخ نداد؛ مسیر بعدی در حال آزمایش است",
                             progress = (index.toFloat() / smartCandidateGuids.size.toFloat())
                                 .coerceIn(0.1f, 0.95f),
                             pingMillis = smartCandidatePings[nextGuid]
+                                .takeIf { smartPingIsReal && it > 0L },
+                            internetVerified = null
                         )
                     }
                     mainViewModel.updateSelectedGuid(nextGuid)
-                    delay(500L)
+                    delay(400L)
                     LauncherManager.startService(this@MainActivity)
                 }
             }
 
+            LauncherManager.stopService(this@MainActivity)
             smartCandidateGuids = emptyList()
             smartUiState.update {
                 it.copy(
                     isWorking = false,
-                    phase = "اتصال برقرار نشد",
-                    errorMessage = "مسیرهای در دسترس پاسخ ندادند. بعداً دوباره تلاش کن."
+                    phase = "دسترسی اینترنت برقرار نشد",
+                    internetVerified = false,
+                    errorMessage = "سرویس اتصال روشن شد، اما عبور اینترنت تأیید نشد. مسیرهای دیگر هم بررسی شدند."
                 )
             }
         }
@@ -476,6 +532,8 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
         smartConnectJob?.cancel()
         smartAttemptJob?.cancel()
         identityLookupJob?.cancel()
+        internetCheckJob?.cancel()
+        mainViewModel.cancelAllPing()
         smartCandidateGuids = emptyList()
         LauncherManager.stopService(this)
         smartUiState.update {
@@ -485,6 +543,7 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                 publicIp = null,
                 countryName = null,
                 countryCode = null,
+                internetVerified = null,
                 errorMessage = null
             )
         }
@@ -494,13 +553,39 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
         lifecycleScope.launch {
             mainViewModel.uiState.collect { state ->
                 if (state.isRunning && !wasVpnRunning) {
+                    val smartAttemptInProgress = smartCandidateGuids.isNotEmpty()
                     smartUiState.update {
-                        it.copy(isWorking = false, phase = "اتصال برقرار است", errorMessage = null)
+                        it.copy(
+                            isWorking = smartAttemptInProgress,
+                            phase = "در حال بررسی دسترسی اینترنت",
+                            internetVerified = null,
+                            errorMessage = null
+                        )
                     }
+
+                    if (!smartAttemptInProgress) {
+                        internetCheckJob?.cancel()
+                        internetCheckJob = lifecycleScope.launch {
+                            val reachable = withContext(Dispatchers.IO) {
+                                MoghimiNetworkIdentityLookup.verifyInternetThroughTunnel()
+                            }
+                            if (mainViewModel.uiState.value.isRunning) {
+                                smartUiState.update {
+                                    it.copy(
+                                        isWorking = false,
+                                        phase = if (reachable) "اینترنت آماده است" else "اتصال روشن است؛ اینترنت پاسخ نداد",
+                                        internetVerified = reachable,
+                                        errorMessage = if (reachable) null
+                                            else "تونل روشن است، اما آزمون دسترسی اینترنت ناموفق بود."
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     identityLookupJob?.cancel()
                     identityLookupJob = lifecycleScope.launch {
-                        // Give Android time to finish routing this app through the new tunnel.
-                        delay(1_500L)
+                        delay(1_000L)
                         val identity = withContext(Dispatchers.IO) {
                             MoghimiNetworkIdentityLookup.lookup()
                         }
@@ -514,13 +599,17 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                             }
                         }
                     }
+                    checkForMoghimiUpdates()
                 } else if (!state.isRunning && wasVpnRunning) {
                     identityLookupJob?.cancel()
+                    internetCheckJob?.cancel()
                     smartUiState.update {
                         it.copy(
+                            isWorking = false,
                             publicIp = null,
                             countryName = null,
-                            countryCode = null
+                            countryCode = null,
+                            internetVerified = null
                         )
                     }
                 }
