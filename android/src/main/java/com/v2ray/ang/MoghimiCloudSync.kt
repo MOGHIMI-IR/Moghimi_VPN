@@ -43,7 +43,7 @@ object MoghimiCloudSync {
     fun sync(): SyncResult {
         val entries = JSONArray(request(CONFIG_TABLE_URL, "GET"))
         if (entries.length() == 0) {
-            throw IOException("در سایت هنوز کانفیگ فعالی منتشر نشده است.")
+            throw IOException("در حال حاضر مسیری برای اتصال منتشر نشده است.")
         }
 
         val payloads = ArrayList<String>(entries.length())
@@ -56,7 +56,7 @@ object MoghimiCloudSync {
                 "file" -> {
                     val path = entry.optString("file_path")
                     if (path.isBlank()) {
-                        throw IOException("مسیر یکی از فایل‌های کانفیگ خالی است.")
+                        throw IOException("اطلاعات یکی از مسیرها ناقص است.")
                     }
                     downloadPrivateFile(path)
                 }
@@ -69,16 +69,16 @@ object MoghimiCloudSync {
         }
 
         if (payloads.isEmpty()) {
-            throw IOException("هیچ محتوای کانفیگ قابل واردکردنی در سایت پیدا نشد.")
+            throw IOException("هیچ مسیر قابل استفاده‌ای در سایت پیدا نشد.")
         }
 
         val subscription = MmkvManager.decodeSubscription(CLOUD_GROUP_ID)
             ?: SubscriptionItem(
-                remarks = "کانفیگ‌های سایت مقیمی",
+                remarks = "مسیرهای سایت مقیمی",
                 enabled = true,
                 autoUpdate = false
             )
-        subscription.remarks = "کانفیگ‌های سایت مقیمی"
+        subscription.remarks = "مسیرهای سایت مقیمی"
         subscription.enabled = true
         subscription.autoUpdate = false
         MmkvManager.encodeSubscription(CLOUD_GROUP_ID, subscription)
@@ -104,7 +104,7 @@ object MoghimiCloudSync {
         }
 
         if (importedProfiles == 0 && importedSubscriptions == 0) {
-            throw IOException("فایل‌ها دریافت شدند، اما کانفیگ معتبر شناسایی نشد.")
+            throw IOException("مسیرهای دریافت‌شده معتبر نبودند.")
         }
 
         return SyncResult(
@@ -155,7 +155,7 @@ object MoghimiCloudSync {
             readTimeout = 30_000
             instanceFollowRedirects = true
             setRequestProperty("Accept", "*/*")
-            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.1.1")
+            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.2")
             if (includeApiKey) {
                 // Supabase sb_publishable keys are opaque API keys, not JWTs.
                 // Send them only in the apikey header; Authorization is reserved for user JWTs.
@@ -184,7 +184,7 @@ object MoghimiCloudSync {
 
             if (status !in 200..299) {
                 // Do not include configuration payloads, signed URLs or credentials in errors.
-                throw IOException("ارتباط با سرویس کانفیگ ناموفق بود (HTTP $status).")
+                throw IOException("دریافت اطلاعات اتصال ناموفق بود (HTTP $status).")
             }
             return response
         } finally {
