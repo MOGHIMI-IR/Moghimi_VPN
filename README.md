@@ -6,6 +6,8 @@
 
 **یک لمس تا اتصال هوشمند**
 
+<p align="center"><img src="android/assets/moghimi-vpn-icon.png" alt="نشان اختصاصی Moghimi VPN" width="176" /></p>
+
 [🌐 ورود به سایت رسمی](https://moghimi-ir.github.io/MG_V2RAY/) · [⬇️ دریافت آخرین نسخه اندروید](https://github.com/MOGHIMI-IR/Moghimi_VPN/releases) · [🧪 گزارش مشکل](https://github.com/MOGHIMI-IR/Moghimi_VPN/issues)
 
 </div>
