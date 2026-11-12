@@ -151,11 +151,11 @@ object MoghimiCloudSync {
     ): String {
         val connection = (URL(address).openConnection() as HttpURLConnection).apply {
             requestMethod = method
-            connectTimeout = 15_000
-            readTimeout = 30_000
+            connectTimeout = 5_000
+            readTimeout = 8_000
             instanceFollowRedirects = true
             setRequestProperty("Accept", "*/*")
-            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.2")
+            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.5")
             if (includeApiKey) {
                 // Supabase sb_publishable keys are opaque API keys, not JWTs.
                 // Send them only in the apikey header; Authorization is reserved for user JWTs.
