@@ -260,11 +260,13 @@ fun MoghimiVpnScreen(
                     Text("دریافت به‌روزرسانی", color = Color(0xFFFFD84D))
                 }
             },
-            dismissButton = if (update.mandatory) null else ({
-                TextButton(onClick = onDismissUpdate) {
-                    Text("بعداً", color = Color(0xFFB8C4DF))
+            dismissButton = {
+                if (!update.mandatory) {
+                    TextButton(onClick = onDismissUpdate) {
+                        Text("بعداً", color = Color(0xFFB8C4DF))
+                    }
                 }
-            })
+            }
         )
     }
 }
