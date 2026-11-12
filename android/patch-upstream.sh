@@ -515,11 +515,13 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
 if activity.count(insertion) != 1:
     raise SystemExit("Could not locate MainActivity method insertion point")
 activity = activity.replace(insertion, methods + insertion, 1)
+activity_file = project / "app/src/main/java/com/v2ray/ang/ui/main/MainActivity.kt"
+activity_file.write_text(activity, encoding="utf-8")
 
 # After the service is launched, watch its real state and walk through ranked alternatives if needed.
 replace_once(
-    activity_file := project / "app/src/main/java/com/v2ray/ang/ui/main/MainActivity.kt",
-    "            LauncherManager.startService(this)\n        }\n    }\n\n    private fun importManually",
+    activity_file,
+    "        LauncherManager.startService(this)\n    }\n\n    private fun importManually",
     """            LauncherManager.startService(this)
         }
         if (smartCandidateGuids.isNotEmpty()) {
