@@ -41,8 +41,8 @@ gradle = app / "build.gradle.kts"
 source = gradle.read_text(encoding="utf-8")
 for old, new, label in [
     ('applicationId = "com.v2ray.ang"', 'applicationId = "ir.moghimi.vpn"', "applicationId"),
-    ("versionCode = 755", "versionCode = 1", "versionCode"),
-    ('versionName = "2.3.15"', 'versionName = "1.0.0"', "versionName"),
+    ("versionCode = 755", "versionCode = 2", "versionCode"),
+    ('versionName = "2.3.15"', 'versionName = "1.0.1"', "versionName"),
 ]:
     if source.count(old) != 1:
         raise SystemExit(f"Expected one Gradle match for {label}")
@@ -182,6 +182,7 @@ activity = activity.replace(
     private var identityLookupJob: Job? = null
     private var smartCandidateGuids: List<String> = emptyList()
     private var smartCandidatePings: Map<String, Long> = emptyMap()
+    private var smartPingIsReal: Boolean = true
     private var preferredServerGuid: String? = null
     private var wasVpnRunning = false
 """,
@@ -334,7 +335,6 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                 mainViewModel.cancelAllPing()
                 mainViewModel.testAllRealPing()
                 withTimeout(180_000L) {
-                    mainViewModel.uiState.first { it.isTesting }
                     mainViewModel.uiState.first { !it.isTesting }
                 }
 
@@ -342,8 +342,10 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                 var ranked = serverFlow.value
                     .filter { it.testDelayMillis > 0L }
                     .sortedBy { it.testDelayMillis }
+                var hasRealPing = true
 
                 if (ranked.isEmpty()) {
+                    hasRealPing = false
                     smartUiState.update {
                         it.copy(
                             phase = "در حال بررسی دسترسی مسیرها",
@@ -352,7 +354,6 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                     }
                     mainViewModel.testAllRealPing(onlyTcp = true)
                     withTimeout(120_000L) {
-                        mainViewModel.uiState.first { it.isTesting }
                         mainViewModel.uiState.first { !it.isTesting }
                     }
                     ranked = serverFlow.value
@@ -372,13 +373,14 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                 }
                 smartCandidateGuids = ordered.map { it.guid }
                 smartCandidatePings = ordered.associate { it.guid to it.testDelayMillis }
+                smartPingIsReal = hasRealPing
                 mainViewModel.updateSelectedGuid(smartCandidateGuids.first())
                 smartUiState.update {
                     it.copy(
                         isWorking = true,
                         phase = "بهترین مسیر پیدا شد؛ در حال اتصال",
                         progress = 0.82f,
-                        pingMillis = smartCandidatePings[smartCandidateGuids.first()],
+                        pingMillis = smartCandidatePings[smartCandidateGuids.first()].takeIf { smartPingIsReal },
                         serverCount = servers.size,
                         errorMessage = null
                     )
@@ -417,7 +419,7 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                             isWorking = false,
                             phase = "اتصال برقرار است",
                             progress = 1f,
-                            pingMillis = smartCandidatePings[guid],
+                            pingMillis = smartCandidatePings[guid].takeIf { smartPingIsReal },
                             errorMessage = null
                         )
                     }
@@ -487,12 +489,12 @@ methods = """    private fun scheduleMoghimiBackgroundSync() {
                         val identity = withContext(Dispatchers.IO) {
                             MoghimiNetworkIdentityLookup.lookup()
                         }
-                        if (mainViewModel.uiState.value.isRunning && identity != null) {
+                        if (mainViewModel.uiState.value.isRunning) {
                             smartUiState.update {
                                 it.copy(
-                                    publicIp = identity.ipAddress,
-                                    countryName = identity.countryName,
-                                    countryCode = identity.countryCode
+                                    publicIp = identity?.ipAddress ?: "دریافت نشد",
+                                    countryName = identity?.countryName ?: "شناسایی نشد",
+                                    countryCode = identity?.countryCode
                                 )
                             }
                         }
