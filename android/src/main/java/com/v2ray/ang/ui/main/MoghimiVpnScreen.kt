@@ -13,6 +13,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateBottomPadding
+import androidx.compose.foundation.layout.calculateTopPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -61,7 +64,6 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.MoghimiCloudSync
 import com.v2ray.ang.dto.entities.ServersCache
-import kotlinx.coroutines.flow.StateFlow
 import java.util.Locale
 
 data class MoghimiSmartUiState(
@@ -106,8 +108,8 @@ fun MoghimiVpnScreen(
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(
-                    top = WindowInsets.statusBars.asPaddingValuesTop(),
-                    bottom = WindowInsets.navigationBars.asPaddingValuesBottom()
+                    top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding(),
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 )
                 .padding(horizontal = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
