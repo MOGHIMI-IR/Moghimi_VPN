@@ -182,7 +182,7 @@ fun MoghimiVpnScreen(
                 publicIp = smartState.publicIp,
                 countryName = smartState.countryName,
                 countryCode = smartState.countryCode,
-                isConnected = isConnected
+                isConnected = isTunnelActive
             )
 
             Spacer(Modifier.height(15.dp))
