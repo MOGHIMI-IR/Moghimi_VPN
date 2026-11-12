@@ -17,6 +17,41 @@ data class MoghimiNetworkIdentity(
  * The VpnService is configured to route this app through the tunnel before this lookup.
  */
 object MoghimiNetworkIdentityLookup {
+    /**
+     * Confirms that ordinary HTTPS traffic can leave this app through the active VPN.
+     * This check is independent of country/IP lookup and never controls tunnel startup.
+     */
+    fun verifyInternetThroughTunnel(): Boolean {
+        val endpoints = listOf(
+            "https://www.gstatic.com/generate_204",
+            "https://cp.cloudflare.com/generate_204",
+            "https://www.google.com/generate_204"
+        )
+        for (endpoint in endpoints) {
+            val connection = try {
+                (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 2_500
+                    readTimeout = 2_500
+                    instanceFollowRedirects = true
+                    setRequestProperty("Cache-Control", "no-cache")
+                    setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.5")
+                }
+            } catch (_: Exception) {
+                continue
+            }
+            try {
+                val status = connection.responseCode
+                if (status in 200..399) return true
+            } catch (_: Exception) {
+                // Try the next independent reachability endpoint.
+            } finally {
+                connection.disconnect()
+            }
+        }
+        return false
+    }
+
     fun lookup(): MoghimiNetworkIdentity? {
         return try {
             lookupCountryIs()
@@ -52,11 +87,11 @@ object MoghimiNetworkIdentityLookup {
     private fun request(address: String): String {
         val connection = (URL(address).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
-            connectTimeout = 5_000
-            readTimeout = 6_000
+            connectTimeout = 3_000
+            readTimeout = 3_500
             instanceFollowRedirects = true
             setRequestProperty("Accept", "application/json")
-            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.2")
+            setRequestProperty("User-Agent", "MoghimiVPN-Android/1.0.5")
             setRequestProperty("Cache-Control", "no-cache")
         }
         try {
