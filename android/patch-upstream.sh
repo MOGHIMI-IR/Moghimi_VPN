@@ -22,6 +22,7 @@ cp "$ROOT/android/src/main/java/com/v2ray/ang/ui/main/MoghimiVpnScreen.kt" "$JAV
 python3 - "$PROJECT" <<'PY'
 from pathlib import Path
 import re
+import shutil
 import sys
 
 project = Path(sys.argv[1])
@@ -41,8 +42,8 @@ gradle = app / "build.gradle.kts"
 source = gradle.read_text(encoding="utf-8")
 for old, new, label in [
     ('applicationId = "com.v2ray.ang"', 'applicationId = "ir.moghimi.vpn"', "applicationId"),
-    ("versionCode = 755", "versionCode = 3", "versionCode"),
-    ('versionName = "2.3.15"', 'versionName = "1.0.2"', "versionName"),
+    ("versionCode = 755", "versionCode = 4", "versionCode"),
+    ('versionName = "2.3.15"', 'versionName = "1.0.3"', "versionName"),
 ]:
     if source.count(old) != 1:
         raise SystemExit(f"Expected one Gradle match for {label}")
@@ -574,25 +575,58 @@ new_method = """    private fun configurePerAppProxy(builder: Builder) {
 vpn_text = vpn_text[:method_start] + new_method + vpn_text[method_end:]
 vpn_service.write_text(vpn_text, encoding="utf-8")
 
-# Branded vector launcher icon.
+# Install the custom, image-based Moghimi VPN launcher mark.
+icon_source = project.parents[2] / "android/assets/moghimi-vpn-icon.png"
+if not icon_source.is_file():
+    raise SystemExit(f"Missing custom launcher icon: {icon_source}")
+
 manifest = app / "src/main/AndroidManifest.xml"
 manifest_text = manifest.read_text(encoding="utf-8")
-manifest_text = manifest_text.replace('android:icon="@mipmap/ic_launcher"', 'android:icon="@drawable/ic_moghimi_vpn"', 1)
-manifest_text = manifest_text.replace('android:roundIcon="@mipmap/ic_launcher_round"', 'android:roundIcon="@drawable/ic_moghimi_vpn"', 1)
-manifest.write_text(manifest_text, encoding="utf-8")
+replace_once(
+    manifest,
+    'android:icon="@mipmap/ic_launcher"',
+    'android:icon="@mipmap/moghimi_vpn"',
+    "primary launcher icon"
+)
+manifest_text = manifest.read_text(encoding="utf-8")
+if 'android:roundIcon="@mipmap/ic_launcher_round"' in manifest_text:
+    replace_once(
+        manifest,
+        'android:roundIcon="@mipmap/ic_launcher_round"',
+        'android:roundIcon="@mipmap/moghimi_vpn"',
+        "round launcher icon"
+    )
+elif 'android:roundIcon=' in manifest_text:
+    raise SystemExit("Unexpected existing roundIcon value; review manifest before replacing it")
+else:
+    manifest_text = manifest.read_text(encoding="utf-8")
+    manifest_text = manifest_text.replace(
+        'android:icon="@mipmap/moghimi_vpn"',
+        'android:icon="@mipmap/moghimi_vpn" android:roundIcon="@mipmap/moghimi_vpn"',
+        1
+    )
+    manifest.write_text(manifest_text, encoding="utf-8")
 
-(res / "drawable/ic_moghimi_vpn.xml").write_text(
-    """<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <path android:fillColor="#080F20" android:pathData="M0,0h108v108h-108z" />
-    <path android:fillColor="#1B2B4A" android:pathData="M54,8a46,46 0,1 0,0.1 0z" />
-    <path android:fillColor="#FFD84D" android:pathData="M18,56c0,-18 14,-32 32,-32 11,0 20,5 26,14l-10,8c-4,-6 -9,-9 -16,-9 -11,0 -19,8 -19,19s8,19 19,19c7,0 12,-3 16,-9l10,8c-6,9 -15,14 -26,14 -18,0 -32,-14 -32,-32z" />
-    <path android:fillColor="#A98BFF" android:pathData="M72,23h13v10h-7v49h-13V33h-7V23h14z" />
-    <path android:fillColor="#63DDB6" android:pathData="M90,12a5,5 0,1 0,0.1 0z" />
-</vector>
+# Pre-adaptive-icon fallback and adaptive foreground use the same artwork.
+mipmap_nodpi = res / "mipmap-nodpi"
+mipmap_nodpi.mkdir(parents=True, exist_ok=True)
+shutil.copyfile(icon_source, mipmap_nodpi / "moghimi_vpn.png")
+shutil.copyfile(icon_source, mipmap_nodpi / "moghimi_vpn_foreground.png")
+
+adaptive_dir = res / "mipmap-anydpi-v26"
+adaptive_dir.mkdir(parents=True, exist_ok=True)
+(adaptive_dir / "moghimi_vpn.xml").write_text(
+    """<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/moghimi_icon_background" />
+    <foreground android:drawable="@mipmap/moghimi_vpn_foreground" />
+</adaptive-icon>
+""",
+    encoding="utf-8"
+)
+(res / "values/moghimi_launcher_colors.xml").write_text(
+    """<resources>
+    <color name="moghimi_icon_background">#080F20</color>
+</resources>
 """,
     encoding="utf-8"
 )
