@@ -678,6 +678,44 @@ new_method = """    private fun configurePerAppProxy(builder: Builder) {
 vpn_text = vpn_text[:method_start] + new_method + vpn_text[method_end:]
 vpn_service.write_text(vpn_text, encoding="utf-8")
 
+# Keep all foreground notifications branded and never expose the selected route name.
+notification_file = java / "handler/NotificationManager.kt"
+notification_text = notification_file.read_text(encoding="utf-8")
+notification_text = notification_text.replace(
+    '.setSmallIcon(R.drawable.ic_stat_name)',
+    '.setSmallIcon(R.drawable.ic_moghimi_vpn_notification)'
+)
+notification_text = notification_text.replace(
+    '.setSmallIcon(R.drawable.ic_stat_proxy)',
+    '.setSmallIcon(R.drawable.ic_moghimi_vpn_notification)'
+)
+notification_text = notification_text.replace(
+    '.setSmallIcon(R.drawable.ic_stat_direct)',
+    '.setSmallIcon(R.drawable.ic_moghimi_vpn_notification)'
+)
+notification_text = notification_text.replace(
+    '.setContentTitle(currentConfig?.remarks ?: service.getString(R.string.app_name))',
+    '.setContentTitle(service.getString(R.string.app_name))'
+)
+append_start = notification_text.index("    private fun appendSpeedString(")
+append_end = notification_text.index("    /**\\n     * Updates the speed notification once.", append_start)
+notification_text = notification_text[:append_start] + notification_text[append_end:]
+import re
+notification_text = re.sub(r"\\nimport kotlin\\.math\\.min\\n", "\\n", notification_text)
+speed_start = notification_text.index("        if (!zeroSpeed || !lastZeroSpeed) {")
+speed_end = notification_text.index("\\n        lastQueryTime = queryTime", speed_start)
+notification_text = (
+    notification_text[:speed_start]
+    + """        if (!zeroSpeed || !lastZeroSpeed) {
+            val totalUp = proxyUplink + directUplink
+            val totalDown = proxyDownlink + directDownlink
+            val text = "دریافت " + totalDown.toSpeedString() + " • ارسال " + totalUp.toSpeedString()
+            updateNotification(text, proxyTotal, directTotal)
+        }"""
+    + notification_text[speed_end:]
+)
+notification_file.write_text(notification_text, encoding="utf-8")
+
 # Install the custom, image-based Moghimi VPN launcher mark.
 icon_source = project.parents[2] / "android/assets/moghimi-vpn-icon.png"
 if not icon_source.is_file():
@@ -718,6 +756,11 @@ manifest_text = (
 manifest.write_text(manifest_text, encoding="utf-8")
 
 # Pre-adaptive-icon fallback and adaptive foreground use the same artwork.
+# The in-app Compose header must resolve to a raster image, never the adaptive-icon XML.
+header_icon_dir = res / "drawable-nodpi"
+header_icon_dir.mkdir(parents=True, exist_ok=True)
+shutil.copyfile(icon_source, header_icon_dir / "moghimi_vpn_header.png")
+
 mipmap_nodpi = res / "mipmap-nodpi"
 mipmap_nodpi.mkdir(parents=True, exist_ok=True)
 shutil.copyfile(icon_source, mipmap_nodpi / "moghimi_vpn.png")
@@ -741,7 +784,27 @@ adaptive_dir.mkdir(parents=True, exist_ok=True)
     encoding="utf-8"
 )
 
-print("Moghimi VPN dashboard, smart routing, branding and tunnel identity patch applied.")
+# A white monochrome shield mark for Android's foreground-service notification.
+notification_icon = res / "drawable/ic_moghimi_vpn_notification.xml"
+notification_icon.parent.mkdir(parents=True, exist_ok=True)
+notification_icon.write_text(
+    """<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M12,2 L20,5.5 L20,11 C20,16.5 16.5,20.2 12,22 C7.5,20.2 4,16.5 4,11 L4,5.5 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M9,10 L9,8.5 C9,4.5 15,4.5 15,8.5 L15,10 L17,10 L17,18 L7,18 L7,10 Z" />
+</vector>
+""",
+    encoding="utf-8"
+)
+
+print("Moghimi VPN dashboard, smart routing, notifications and update checks prepared.")
 PY
 
 echo "Prepared Moghimi VPN Android source under $PROJECT"
