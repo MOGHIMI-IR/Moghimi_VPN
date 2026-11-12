@@ -14,8 +14,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.calculateBottomPadding
-import androidx.compose.foundation.layout.calculateTopPadding
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,6 +33,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -78,6 +77,7 @@ data class MoghimiSmartUiState(
     val errorMessage: String? = null
 )
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoghimiVpnScreen(
     mainViewModel: MainViewModel,
