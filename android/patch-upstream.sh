@@ -17,6 +17,7 @@ mkdir -p "$JAVA/ui/main"
 cp "$ROOT/android/src/main/java/com/v2ray/ang/MoghimiCloudSync.kt" "$JAVA/MoghimiCloudSync.kt"
 cp "$ROOT/android/src/main/java/com/v2ray/ang/MoghimiSyncWorker.kt" "$JAVA/MoghimiSyncWorker.kt"
 cp "$ROOT/android/src/main/java/com/v2ray/ang/MoghimiNetworkIdentity.kt" "$JAVA/MoghimiNetworkIdentity.kt"
+cp "$ROOT/android/src/main/java/com/v2ray/ang/MoghimiUpdateChecker.kt" "$JAVA/MoghimiUpdateChecker.kt"
 cp "$ROOT/android/src/main/java/com/v2ray/ang/ui/main/MoghimiVpnScreen.kt" "$JAVA/ui/main/MoghimiVpnScreen.kt"
 
 python3 - "$PROJECT" <<'PY'
@@ -42,8 +43,8 @@ gradle = app / "build.gradle.kts"
 source = gradle.read_text(encoding="utf-8")
 for old, new, label in [
     ('applicationId = "com.v2ray.ang"', 'applicationId = "ir.moghimi.vpn"', "applicationId"),
-    ("versionCode = 755", "versionCode = 5", "versionCode"),
-    ('versionName = "2.3.15"', 'versionName = "1.0.4"', "versionName"),
+    ("versionCode = 755", "versionCode = 6", "versionCode"),
+    ('versionName = "2.3.15"', 'versionName = "1.0.5"', "versionName"),
 ]:
     if source.count(old) != 1:
         raise SystemExit(f"Expected one Gradle match for {label}")
@@ -137,6 +138,19 @@ for values_file in [res / "values/strings.xml", res / "values-fa/strings.xml"]:
         text,
         count=1
     )
+    replacements = {
+        "notification_action_stop_v2ray": "قطع اتصال" if values_file.parent.name == "values-fa" else "Disconnect",
+        "title_service_restart": "راه‌اندازی دوباره" if values_file.parent.name == "values-fa" else "Restart VPN",
+        "notification_channel_subscription_updates": "به‌روزرسانی مسیرها" if values_file.parent.name == "values-fa" else "Route updates",
+        "notification_channel_connection_checks": "بررسی اتصال" if values_file.parent.name == "values-fa" else "Connection checks",
+    }
+    for name, value in replacements.items():
+        text = re.sub(
+            rf'(<string name="{name}"[^>]*>).*?(</string>)',
+            lambda match, value=value: match.group(1) + value + match.group(2),
+            text,
+            count=1
+        )
     if values_file.parent.name == "values-fa":
         text = text.replace("سرویس v2rayNG", "سرویس Moghimi VPN")
     values_file.write_text(text, encoding="utf-8")
