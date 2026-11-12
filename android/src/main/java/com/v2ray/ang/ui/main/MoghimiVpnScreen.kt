@@ -28,23 +28,19 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -64,7 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.MoghimiCloudSync
-import com.v2ray.ang.dto.entities.ServersCache
+import com.v2ray.ang.MoghimiUpdateInfo
 import java.util.Locale
 
 data class MoghimiSmartUiState(
@@ -76,10 +72,11 @@ data class MoghimiSmartUiState(
     val publicIp: String? = null,
     val countryName: String? = null,
     val countryCode: String? = null,
-    val errorMessage: String? = null
+    val errorMessage: String? = null,
+    val internetVerified: Boolean? = null,
+    val updateInfo: MoghimiUpdateInfo? = null
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MoghimiVpnScreen(
     mainViewModel: MainViewModel,
@@ -87,20 +84,20 @@ fun MoghimiVpnScreen(
     onConnect: () -> Unit,
     onDisconnect: () -> Unit,
     onRefresh: () -> Unit,
-    onSelectServer: (String) -> Unit
+    onOpenUpdate: (String) -> Unit,
+    onDismissUpdate: () -> Unit
 ) {
     val connection by mainViewModel.uiState.collectAsStateWithLifecycle()
     val cloudServerFlow = remember(mainViewModel) {
         mainViewModel.serversForGroup(MoghimiCloudSync.CLOUD_GROUP_ID)
     }
     val servers by cloudServerFlow.collectAsStateWithLifecycle()
-    val selectedServer = servers.firstOrNull { it.guid == connection.selectedGuid }
-    val isConnected = connection.isRunning
-    val isBusy = smartState.isWorking || connection.isTesting
+    val isTunnelActive = connection.isRunning
+    val isBusy = smartState.isWorking || connection.isTesting ||
+        (isTunnelActive && smartState.internetVerified == null)
     val ping = smartState.pingMillis
-        ?: selectedServer?.testDelayMillis?.takeIf { it > 0L }
-
-    var showServerPicker by remember { mutableStateOf(false) }
+        ?: servers.firstOrNull { it.guid == connection.selectedGuid }
+            ?.testDelayMillis?.takeIf { it > 0L }
 
     Box(modifier = Modifier.fillMaxSize()) {
         MoghimiAtmosphereBackground()
@@ -118,8 +115,9 @@ fun MoghimiVpnScreen(
         ) {
             Spacer(Modifier.height(12.dp))
             HeaderRow(
-                isConnected = isConnected,
+                isConnected = isTunnelActive,
                 isBusy = isBusy,
+                internetVerified = smartState.internetVerified,
                 onRefresh = onRefresh
             )
 
@@ -153,12 +151,24 @@ fun MoghimiVpnScreen(
             )
 
             AnimatedContent(
-                targetState = isConnected,
+                targetState = Triple(isTunnelActive, smartState.internetVerified, smartState.phase),
                 label = "connection-caption"
-            ) { connected ->
+            ) { status ->
+                val (tunnelActive, internetOk, phase) = status
+                val message = when {
+                    tunnelActive && internetOk == true -> "اینترنت از مسیر امن عبور می‌کند"
+                    tunnelActive && internetOk == false -> "تونل روشن است؛ اینترنت پاسخ نمی‌دهد"
+                    tunnelActive -> "در حال بررسی دسترسی اینترنت"
+                    isBusy -> phase
+                    else -> "برای شروع، دکمه را لمس کن"
+                }
                 Text(
-                    text = if (connected) "اتصال امن برقرار است" else if (isBusy) smartState.phase else "برای شروع، دکمه را لمس کن",
-                    color = if (connected) Color(0xFF71E5BE) else Color(0xFFB8C4DF),
+                    text = message,
+                    color = when {
+                        tunnelActive && internetOk == true -> Color(0xFF71E5BE)
+                        tunnelActive && internetOk == false -> Color(0xFFFFB36B)
+                        else -> Color(0xFFB8C4DF)
+                    },
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center,
@@ -176,13 +186,11 @@ fun MoghimiVpnScreen(
             )
 
             Spacer(Modifier.height(15.dp))
-            RouteCard(
-                isConnected = isConnected,
+            ConnectionModeCard(
+                isTunnelActive = isTunnelActive,
+                internetVerified = smartState.internetVerified,
                 isBusy = isBusy,
-                selectedServer = selectedServer,
-                serverCount = maxOf(smartState.serverCount, servers.size),
-                onChoose = { showServerPicker = true },
-                onConnect = onConnect
+                serverCount = maxOf(smartState.serverCount, servers.size)
             )
 
             AnimatedVisibility(visible = !smartState.errorMessage.isNullOrBlank()) {
@@ -206,74 +214,58 @@ fun MoghimiVpnScreen(
 
             Spacer(Modifier.height(20.dp))
             BottomActionRow(
-                isConnected = isConnected,
                 isBusy = isBusy,
-                onRefresh = onRefresh,
-                onChoose = { showServerPicker = true }
+                onRefresh = onRefresh
             )
             Spacer(Modifier.height(28.dp))
         }
     }
 
-    if (showServerPicker) {
-        ModalBottomSheet(
-            onDismissRequest = { showServerPicker = false },
-            containerColor = Color(0xFF111B34),
-            contentColor = Color(0xFFF3F5FF),
-            dragHandle = {
-                Box(
-                    Modifier
-                        .padding(top = 10.dp, bottom = 12.dp)
-                        .size(width = 42.dp, height = 4.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF53617E))
-                )
-            }
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 30.dp)
-            ) {
+    smartState.updateInfo?.let { update ->
+        AlertDialog(
+            onDismissRequest = {
+                if (!update.mandatory) onDismissUpdate()
+            },
+            containerColor = Color(0xFF15213D),
+            titleContentColor = Color(0xFFF5F4FF),
+            textContentColor = Color(0xFFC6D0E7),
+            title = {
                 Text(
-                    text = "انتخاب مسیر",
-                    fontSize = 22.sp,
+                    text = "نسخهٔ جدید آماده است",
                     fontWeight = FontWeight.Black
                 )
-                Text(
-                    text = "فقط نام مسیر و کیفیت اتصال نمایش داده می‌شود.",
-                    color = Color(0xFF9DABC9),
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(top = 5.dp, bottom = 16.dp)
-                )
-                if (servers.isEmpty()) {
+            },
+            text = {
+                Column {
                     Text(
-                        text = "هنوز مسیری دریافت نشده؛ دریافت خودکار را اجرا کن.",
-                        color = Color(0xFFB8C4DF),
-                        fontSize = 13.sp,
-                        modifier = Modifier.padding(vertical = 20.dp)
+                        text = "نسخهٔ ${update.versionName}",
+                        color = Color(0xFFFFD84D),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp
                     )
-                } else {
-                    LazyColumn(
-                        modifier = Modifier.height((servers.size.coerceAtMost(5) * 76 + 12).dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        itemsIndexed(servers, key = { _, item -> item.guid }) { index, server ->
-                            ServerPickerRow(
-                                index = index,
-                                server = server,
-                                selected = server.guid == connection.selectedGuid,
-                                onClick = {
-                                    onSelectServer(server.guid)
-                                    showServerPicker = false
-                                }
-                            )
-                        }
+                    if (update.releaseNotes.isNotBlank()) {
+                        Text(
+                            text = update.releaseNotes,
+                            modifier = Modifier.padding(top = 9.dp),
+                            fontSize = 12.sp,
+                            lineHeight = 19.sp,
+                            maxLines = 8,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
-            }
-        }
+            },
+            confirmButton = {
+                TextButton(onClick = { onOpenUpdate(update.downloadUrl) }) {
+                    Text("دریافت به‌روزرسانی", color = Color(0xFFFFD84D))
+                }
+            },
+            dismissButton = if (update.mandatory) null else ({
+                TextButton(onClick = onDismissUpdate) {
+                    Text("بعداً", color = Color(0xFFB8C4DF))
+                }
+            })
+        )
     }
 }
 
@@ -281,6 +273,7 @@ fun MoghimiVpnScreen(
 private fun HeaderRow(
     isConnected: Boolean,
     isBusy: Boolean,
+    internetVerified: Boolean?,
     onRefresh: () -> Unit
 ) {
     Row(
@@ -291,7 +284,7 @@ private fun HeaderRow(
         Row(verticalAlignment = Alignment.CenterVertically) {
             Image(
                 painter = androidx.compose.ui.res.painterResource(
-                    id = com.v2ray.ang.R.mipmap.moghimi_vpn
+                    id = com.v2ray.ang.R.drawable.moghimi_vpn_header
                 ),
                 contentDescription = "Moghimi VPN",
                 contentScale = ContentScale.Crop,
@@ -332,7 +325,9 @@ private fun HeaderRow(
                     .clip(CircleShape)
                     .background(
                         when {
-                            isConnected -> Color(0xFF69E2B9)
+                            isConnected && internetVerified == true -> Color(0xFF69E2B9)
+                            isConnected && internetVerified == false -> Color(0xFFFFA45F)
+                            isConnected -> Color(0xFFFFD84D)
                             isBusy -> Color(0xFFFFD84D)
                             else -> Color(0xFF8190B1)
                         }
@@ -340,7 +335,9 @@ private fun HeaderRow(
             )
             Text(
                 text = when {
-                    isConnected -> "محافظت فعاله"
+                    isConnected && internetVerified == true -> "اتصال فعال"
+                    isConnected && internetVerified == false -> "نیاز به بررسی"
+                    isConnected -> "در حال بررسی"
                     isBusy -> "در حال آماده‌سازی"
                     else -> "آماده"
                 },
@@ -677,18 +674,14 @@ private fun StatDivider() {
 }
 
 @Composable
-private fun RouteCard(
-    isConnected: Boolean,
+private fun ConnectionModeCard(
+    isTunnelActive: Boolean,
+    internetVerified: Boolean?,
     isBusy: Boolean,
-    selectedServer: ServersCache?,
-    serverCount: Int,
-    onChoose: () -> Unit,
-    onConnect: () -> Unit
+    serverCount: Int
 ) {
     Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onChoose),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         color = Color(0xFF141F3A).copy(alpha = 0.84f),
         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF344260))
@@ -704,7 +697,7 @@ private fun RouteCard(
                     .background(Color(0xFF302A58)),
                 contentAlignment = Alignment.Center
             ) {
-                Text("⌁", color = Color(0xFFC8B8FF), fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text("✦", color = Color(0xFFFFD84D), fontSize = 23.sp, fontWeight = FontWeight.Bold)
             }
             Column(
                 modifier = Modifier
@@ -712,22 +705,29 @@ private fun RouteCard(
                     .padding(start = 12.dp)
             ) {
                 Text(
-                    text = if (selectedServer == null) "مسیر هوشمند" else "مسیر انتخاب‌شده",
+                    text = "اتصال هوشمند",
                     color = Color(0xFFF0F2FF),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Text(
-                    text = if (serverCount > 0) serverCount.toString() + " مسیر در دسترس" else "در انتظار دریافت مسیرها",
+                    text = when {
+                        isTunnelActive && internetVerified == true -> "مسیر مناسب پیدا شده و اینترنت در دسترس است"
+                        isTunnelActive && internetVerified == false -> "در حال نیاز به بررسی مسیر اتصال"
+                        isTunnelActive -> "در حال بررسی دسترسی اینترنت"
+                        isBusy -> "در حال پیدا کردن بهترین مسیر"
+                        else -> "بهترین مسیر به‌صورت خودکار انتخاب می‌شود"
+                    },
                     color = Color(0xFF91A0BE),
                     fontSize = 11.sp,
+                    lineHeight = 16.sp,
                     modifier = Modifier.padding(top = 3.dp)
                 )
             }
             Text(
-                text = "تغییر  ›",
+                text = if (serverCount > 0) "$serverCount مسیر" else "خودکار",
                 color = Color(0xFFFFD84D),
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 fontWeight = FontWeight.Bold
             )
         }
@@ -736,32 +736,17 @@ private fun RouteCard(
 
 @Composable
 private fun BottomActionRow(
-    isConnected: Boolean,
     isBusy: Boolean,
-    onRefresh: () -> Unit,
-    onChoose: () -> Unit
+    onRefresh: () -> Unit
 ) {
-    Row(
+    ActionTile(
+        title = "به‌روزرسانی مسیرها",
+        subtitle = "دریافت آخرین مسیرهای قابل استفاده",
+        symbol = "↻",
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        ActionTile(
-            title = "بررسی دوباره",
-            subtitle = "به‌روزرسانی مسیرها",
-            symbol = "↻",
-            modifier = Modifier.weight(1f),
-            enabled = !isBusy,
-            onClick = onRefresh
-        )
-        ActionTile(
-            title = "موقعیت‌ها",
-            subtitle = "انتخاب دستی مسیر",
-            symbol = "⌖",
-            modifier = Modifier.weight(1f),
-            enabled = !isBusy,
-            onClick = onChoose
-        )
-    }
+        enabled = !isBusy,
+        onClick = onRefresh
+    )
 }
 
 @Composable
@@ -804,59 +789,6 @@ private fun ActionTile(
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun ServerPickerRow(
-    index: Int,
-    server: ServersCache,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    val delay = server.testDelayMillis.takeIf { it > 0L }?.let { it.toString() + " ms" } ?: "بررسی نشده"
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        color = if (selected) Color(0xFF2A3158) else Color(0xFF192541),
-        shape = RoundedCornerShape(14.dp),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (selected) Color(0xFFA98BFF) else Color(0xFF334260)
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = (index + 1).toString().padStart(2, '0'),
-                color = Color(0xFFFFD84D),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Black
-            )
-            Column(Modifier.weight(1f).padding(start = 12.dp)) {
-                Text(
-                    text = "مسیر " + (index + 1),
-                    color = Color(0xFFF1F3FF),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = delay,
-                    color = Color(0xFF91A0BE),
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 3.dp)
-                )
-            }
-            Text(
-                text = if (selected) "انتخاب‌شده" else "انتخاب",
-                color = if (selected) Color(0xFF71E5BE) else Color(0xFFB9A0FF),
-                fontSize = 10.sp,
-                fontWeight = FontWeight.Bold
-            )
         }
     }
 }
