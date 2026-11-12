@@ -698,12 +698,12 @@ notification_text = notification_text.replace(
     '.setContentTitle(service.getString(R.string.app_name))'
 )
 append_start = notification_text.index("    private fun appendSpeedString(")
-append_end = notification_text.index("    /**\\n     * Updates the speed notification once.", append_start)
+append_end = notification_text.index("    /**\n     * Updates the speed notification once.", append_start)
 notification_text = notification_text[:append_start] + notification_text[append_end:]
 import re
-notification_text = re.sub(r"\\nimport kotlin\\.math\\.min\\n", "\\n", notification_text)
+notification_text = re.sub(r"\nimport kotlin\.math\.min\n", "\n", notification_text)
 speed_start = notification_text.index("        if (!zeroSpeed || !lastZeroSpeed) {")
-speed_end = notification_text.index("\\n        lastQueryTime = queryTime", speed_start)
+speed_end = notification_text.index("\n        lastQueryTime = queryTime", speed_start)
 notification_text = (
     notification_text[:speed_start]
     + """        if (!zeroSpeed || !lastZeroSpeed) {
