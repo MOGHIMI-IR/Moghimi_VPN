@@ -42,8 +42,8 @@ gradle = app / "build.gradle.kts"
 source = gradle.read_text(encoding="utf-8")
 for old, new, label in [
     ('applicationId = "com.v2ray.ang"', 'applicationId = "ir.moghimi.vpn"', "applicationId"),
-    ("versionCode = 755", "versionCode = 4", "versionCode"),
-    ('versionName = "2.3.15"', 'versionName = "1.0.3"', "versionName"),
+    ("versionCode = 755", "versionCode = 5", "versionCode"),
+    ('versionName = "2.3.15"', 'versionName = "1.0.4"', "versionName"),
 ]:
     if source.count(old) != 1:
         raise SystemExit(f"Expected one Gradle match for {label}")
